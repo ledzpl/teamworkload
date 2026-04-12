@@ -1,0 +1,40 @@
+# Python bytecode and import caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Streamlit local secrets
+.streamlit/secrets.toml
+
+# Local runtime data
+var/*.sqlite
+var/*.sqlite3
+var/*.sqlite-*
+var/*.sqlite3-*
+var/*.db
+var/*.db-*
+var/*.log
+
+# OS/editor noise
+.DS_Store
+
+.env
