@@ -72,6 +72,11 @@ class ResolvedGithubScope:
     excluded_repository_count: int
 
 
+_MetricBucket = dict[str, int | float | date]
+_DeveloperMetricBuckets = dict[tuple[date, str], _MetricBucket]
+_DeliveryMetricBuckets = dict[date, _MetricBucket]
+
+
 class WorkloadSyncPipeline:
     def __init__(
         self,
@@ -557,73 +562,141 @@ def aggregate_developer_period_metrics(
     commits: Iterable[GithubCommitEvent],
     jira_issues: Iterable[JiraAssignedIssueEvent],
 ) -> tuple[DeveloperPeriodMetrics, ...]:
-    aggregates: dict[tuple[date, str], dict[str, int | float | date]] = {}
+    aggregates: _DeveloperMetricBuckets = {}
 
     for pull_request in pull_requests:
-        window = bucket_period(pull_request.merged_at, granularity)
-        bucket = _ensure_bucket(aggregates, window.start, window.end, pull_request.author_email)
-        bucket["github_prs_merged"] += 1
-        if pull_request.cycle_time_hours is not None:
-            bucket["github_pr_cycle_time_hours"] += pull_request.cycle_time_hours
-            bucket["github_prs_with_cycle_time"] += 1
-            if pull_request.cycle_time_hours >= 168:
-                bucket["github_prs_stale"] += 1
-        if pull_request.time_to_first_review_hours is not None:
-            bucket["github_pr_review_wait_hours"] += pull_request.time_to_first_review_hours
-            bucket["github_prs_with_review_wait"] += 1
-        if pull_request.changed_line_count <= 100:
-            bucket["github_prs_small"] += 1
-        elif pull_request.changed_line_count <= 500:
-            bucket["github_prs_medium"] += 1
-        else:
-            bucket["github_prs_large"] += 1
+        _accumulate_pull_request_metrics(
+            aggregates=aggregates,
+            granularity=granularity,
+            pull_request=pull_request,
+        )
 
-    # Overall line totals come from landed commits only so PR counts and line totals
-    # can coexist without double-counting the same code change.
     for commit in commits:
-        window = bucket_period(commit.committed_at, granularity)
-        bucket = _ensure_bucket(aggregates, window.start, window.end, commit.author_email)
-        bucket["github_commits_landed"] += 1
-        bucket["github_lines_added"] += commit.lines_added
-        bucket["github_lines_deleted"] += commit.lines_deleted
+        _accumulate_commit_metrics(
+            aggregates=aggregates,
+            granularity=granularity,
+            commit=commit,
+        )
 
     for issue in jira_issues:
-        window = bucket_period(issue.updated_at, granularity)
-        bucket = _ensure_bucket(aggregates, window.start, window.end, issue.assignee_email)
-        bucket["jira_issues_assigned"] += 1
-        bucket[f"jira_{_jira_bucket_metric_fragment(issue.status_bucket)}_issues"] += 1
+        _accumulate_jira_issue_metrics(
+            aggregates=aggregates,
+            granularity=granularity,
+            issue=issue,
+        )
 
-    results = [
-        DeveloperPeriodMetrics(
+    return tuple(
+        _developer_period_metrics_from_bucket(
             granularity=granularity,
             developer_email=developer_email,
-            period_start=values["period_start"],
-            period_end=values["period_end"],
-            github_prs_merged=values["github_prs_merged"],
-            github_commits_landed=values["github_commits_landed"],
-            github_lines_added=values["github_lines_added"],
-            github_lines_deleted=values["github_lines_deleted"],
-            jira_issues_assigned=values["jira_issues_assigned"],
-            github_pr_cycle_time_hours=values["github_pr_cycle_time_hours"],
-            github_prs_with_cycle_time=values["github_prs_with_cycle_time"],
-            github_pr_review_wait_hours=values["github_pr_review_wait_hours"],
-            github_prs_with_review_wait=values["github_prs_with_review_wait"],
-            github_prs_stale=values["github_prs_stale"],
-            github_prs_small=values["github_prs_small"],
-            github_prs_medium=values["github_prs_medium"],
-            github_prs_large=values["github_prs_large"],
-            jira_todo_issues=values["jira_todo_issues"],
-            jira_in_progress_issues=values["jira_in_progress_issues"],
-            jira_review_issues=values["jira_review_issues"],
-            jira_done_issues=values["jira_done_issues"],
-            jira_other_issues=values["jira_other_issues"],
+            values=values,
         )
         for (_, developer_email), values in sorted(
             aggregates.items(),
             key=lambda item: (item[1]["period_start"], item[0][1]),
         )
-    ]
-    return tuple(results)
+    )
+
+
+def _accumulate_pull_request_metrics(
+    *,
+    aggregates: _DeveloperMetricBuckets,
+    granularity: Granularity,
+    pull_request: GithubPullRequestEvent,
+) -> None:
+    window = bucket_period(pull_request.merged_at, granularity)
+    bucket = _ensure_bucket(
+        aggregates,
+        window.start,
+        window.end,
+        pull_request.author_email,
+    )
+    bucket["github_prs_merged"] += 1
+    if pull_request.cycle_time_hours is not None:
+        bucket["github_pr_cycle_time_hours"] += pull_request.cycle_time_hours
+        bucket["github_prs_with_cycle_time"] += 1
+        if pull_request.cycle_time_hours >= 168:
+            bucket["github_prs_stale"] += 1
+    if pull_request.time_to_first_review_hours is not None:
+        bucket["github_pr_review_wait_hours"] += (
+            pull_request.time_to_first_review_hours
+        )
+        bucket["github_prs_with_review_wait"] += 1
+    if pull_request.changed_line_count <= 100:
+        bucket["github_prs_small"] += 1
+    elif pull_request.changed_line_count <= 500:
+        bucket["github_prs_medium"] += 1
+    else:
+        bucket["github_prs_large"] += 1
+
+
+def _accumulate_commit_metrics(
+    *,
+    aggregates: _DeveloperMetricBuckets,
+    granularity: Granularity,
+    commit: GithubCommitEvent,
+) -> None:
+    # Overall line totals come from landed commits only so PR counts and line totals
+    # can coexist without double-counting the same code change.
+    window = bucket_period(commit.committed_at, granularity)
+    bucket = _ensure_bucket(
+        aggregates,
+        window.start,
+        window.end,
+        commit.author_email,
+    )
+    bucket["github_commits_landed"] += 1
+    bucket["github_lines_added"] += commit.lines_added
+    bucket["github_lines_deleted"] += commit.lines_deleted
+
+
+def _accumulate_jira_issue_metrics(
+    *,
+    aggregates: _DeveloperMetricBuckets,
+    granularity: Granularity,
+    issue: JiraAssignedIssueEvent,
+) -> None:
+    window = bucket_period(issue.updated_at, granularity)
+    bucket = _ensure_bucket(
+        aggregates,
+        window.start,
+        window.end,
+        issue.assignee_email,
+    )
+    bucket["jira_issues_assigned"] += 1
+    bucket[f"jira_{_jira_bucket_metric_fragment(issue.status_bucket)}_issues"] += 1
+
+
+def _developer_period_metrics_from_bucket(
+    *,
+    granularity: Granularity,
+    developer_email: str,
+    values: _MetricBucket,
+) -> DeveloperPeriodMetrics:
+    return DeveloperPeriodMetrics(
+        granularity=granularity,
+        developer_email=developer_email,
+        period_start=values["period_start"],
+        period_end=values["period_end"],
+        github_prs_merged=values["github_prs_merged"],
+        github_commits_landed=values["github_commits_landed"],
+        github_lines_added=values["github_lines_added"],
+        github_lines_deleted=values["github_lines_deleted"],
+        jira_issues_assigned=values["jira_issues_assigned"],
+        github_pr_cycle_time_hours=values["github_pr_cycle_time_hours"],
+        github_prs_with_cycle_time=values["github_prs_with_cycle_time"],
+        github_pr_review_wait_hours=values["github_pr_review_wait_hours"],
+        github_prs_with_review_wait=values["github_prs_with_review_wait"],
+        github_prs_stale=values["github_prs_stale"],
+        github_prs_small=values["github_prs_small"],
+        github_prs_medium=values["github_prs_medium"],
+        github_prs_large=values["github_prs_large"],
+        jira_todo_issues=values["jira_todo_issues"],
+        jira_in_progress_issues=values["jira_in_progress_issues"],
+        jira_review_issues=values["jira_review_issues"],
+        jira_done_issues=values["jira_done_issues"],
+        jira_other_issues=values["jira_other_issues"],
+    )
 
 
 def aggregate_team_period_delivery_metrics(
@@ -631,7 +704,7 @@ def aggregate_team_period_delivery_metrics(
     granularity: Granularity,
     deployments: Iterable[GithubDeploymentEvent],
 ) -> tuple[TeamPeriodDeliveryMetrics, ...]:
-    aggregates: dict[date, dict[str, int | float | date]] = {}
+    aggregates: _DeliveryMetricBuckets = {}
 
     for deployment in deployments:
         window = bucket_period(deployment.deployed_at, granularity)
@@ -662,11 +735,11 @@ def aggregate_team_period_delivery_metrics(
 
 
 def _ensure_bucket(
-    aggregates: dict[tuple[date, str], dict[str, int | float | date]],
+    aggregates: _DeveloperMetricBuckets,
     period_start: date,
     period_end: date,
     developer_email: str,
-) -> dict[str, int | float | date]:
+) -> _MetricBucket:
     key = (period_start, developer_email)
     if key not in aggregates:
         aggregates[key] = {
@@ -701,10 +774,10 @@ def _jira_bucket_metric_fragment(status_bucket: str) -> str:
 
 
 def _ensure_delivery_bucket(
-    aggregates: dict[date, dict[str, int | float | date]],
+    aggregates: _DeliveryMetricBuckets,
     period_start: date,
     period_end: date,
-) -> dict[str, int | float | date]:
+) -> _MetricBucket:
     if period_start not in aggregates:
         aggregates[period_start] = {
             "period_start": period_start,
