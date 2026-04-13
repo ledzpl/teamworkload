@@ -157,11 +157,13 @@ class CommitHeatmapTest(unittest.TestCase):
             monday_18 = [c for c in cells if c.day_of_week == 1 and c.hour == 18]
             self.assertEqual(len(monday_18), 1)
             self.assertEqual(monday_18[0].commit_count, 2)
+            self.assertEqual(monday_18[0].day_total, 2)
 
             # Saturday 23pm UTC → Sunday 8시 KST (dow=0, hour=8)
             sunday_8 = [c for c in cells if c.day_of_week == 0 and c.hour == 8]
             self.assertEqual(len(sunday_8), 1)
             self.assertEqual(sunday_8[0].commit_count, 1)
+            self.assertEqual(sunday_8[0].day_total, 1)
 
     def test_load_commit_heatmap_filters_by_developer(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -177,6 +179,7 @@ class CommitHeatmapTest(unittest.TestCase):
 
             total = sum(c.commit_count for c in cells)
             self.assertEqual(total, 1)
+            self.assertTrue(all(c.day_total == 1 for c in cells))
 
     def test_load_commit_heatmap_empty_range(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -198,6 +201,11 @@ class CommitHeatmapTest(unittest.TestCase):
         )
         figure = build_commit_heatmap_figure(cells)
         self.assertEqual(figure.layout.title.text, "커밋 시간대 히트맵 (KST)")
+        self.assertEqual(
+            tuple(figure.data[0].y),
+            ("월 합계 5", "화 합계 0", "수 합계 3", "목 합계 0", "금 합계 0", "토 합계 0", "일 합계 0"),
+        )
+        self.assertIn("요일 합계: 5건", figure.data[0].text[0][9])
 
     def test_build_commit_heatmap_figure_empty(self) -> None:
         figure = build_commit_heatmap_figure(())

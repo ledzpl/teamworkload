@@ -692,16 +692,22 @@ def build_commit_heatmap_figure(
     # Build 7×24 matrix (rows=days, cols=hours)
     # Reorder to Mon..Sun (strftime %w: 0=Sun)
     reorder = [1, 2, 3, 4, 5, 6, 0]  # Mon=1 .. Sun=0
-    day_labels = [_DAY_LABELS_KO[d] for d in reorder]
+    day_names = [_DAY_LABELS_KO[d] for d in reorder]
 
     matrix = [[0] * 24 for _ in range(7)]
     for cell in cells:
         row_idx = reorder.index(cell.day_of_week)
         matrix[row_idx][cell.hour] = cell.commit_count
 
+    day_totals = [sum(row) for row in matrix]
+    day_labels = [
+        f"{day_name} 합계 {day_total}"
+        for day_name, day_total in zip(day_names, day_totals, strict=True)
+    ]
+
     hover_text = [
         [
-            f"{day_labels[r]} {c}시: {matrix[r][c]}건"
+            f"{day_names[r]} {c}시: {matrix[r][c]}건<br>요일 합계: {day_totals[r]}건"
             for c in range(24)
         ]
         for r in range(7)

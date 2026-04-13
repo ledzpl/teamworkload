@@ -168,6 +168,7 @@ class CommitHeatmapCell:
     day_of_week: int  # 0=Sun … 6=Sat (strftime %w)
     hour: int         # 0–23
     commit_count: int
+    day_total: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -762,15 +763,29 @@ def _build_commit_heatmap_with_conn(
 
     rows = connection.execute(
         f"""
+        WITH hourly AS (
+            SELECT
+                CAST(strftime('%w', datetime(committed_at, '+9 hours')) AS INTEGER) AS dow,
+                CAST(strftime('%H', datetime(committed_at, '+9 hours')) AS INTEGER) AS hour,
+                COUNT(*) AS cnt
+            FROM normalized_github_commits
+            WHERE committed_at BETWEEN ? AND ?
+              {dev_clause}
+            GROUP BY dow, hour
+        ),
+        daily AS (
+            SELECT dow, SUM(cnt) AS day_total
+            FROM hourly
+            GROUP BY dow
+        )
         SELECT
-            CAST(strftime('%w', datetime(committed_at, '+9 hours')) AS INTEGER) AS dow,
-            CAST(strftime('%H', datetime(committed_at, '+9 hours')) AS INTEGER) AS hour,
-            COUNT(*) AS cnt
-        FROM normalized_github_commits
-        WHERE committed_at BETWEEN ? AND ?
-          {dev_clause}
-        GROUP BY dow, hour
-        ORDER BY dow, hour
+            hourly.dow,
+            hourly.hour,
+            hourly.cnt,
+            daily.day_total
+        FROM hourly
+        JOIN daily ON daily.dow = hourly.dow
+        ORDER BY hourly.dow, hourly.hour
         """,
         params,
     ).fetchall()
@@ -780,6 +795,7 @@ def _build_commit_heatmap_with_conn(
             day_of_week=row["dow"],
             hour=row["hour"],
             commit_count=row["cnt"],
+            day_total=row["day_total"],
         )
         for row in rows
     )
