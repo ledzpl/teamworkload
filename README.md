@@ -18,6 +18,7 @@ Local-only workload analytics dashboard for one configured engineering team. It 
 - DORA-lite delivery:
   - successful / failed deployment count (GitHub deployments)
   - deployment lead time (commit to successful deployment)
+  - deployment candidates are scanned from deployments created up to 7 days before the selected window, then filtered by latest deployment status time
 - Developer focus:
   - active repository count per developer per period
 - Commit heatmap:
@@ -32,7 +33,7 @@ These numbers are workload signals, not a productivity score. Generated files, l
 - **Health indicators**: 업무 분배도, 리뷰 흐름, WIP 추세, 배포 안정성, 처리 흐름 (good / caution / warning / no_data)
 - **Alerts**: WIP 편중, 리뷰 병목, Stale PR 누적, 대형 PR 비율, 비활성 개발자, 리뷰 대기 이상치
 - **Signal charts**: team trend, PR flow, developer comparison, Jira throughput, DORA-lite delivery, review efficiency, workload balance, provider split, commit heatmap, developer focus
-- **Global search**: filters the entire dashboard by developer email, date, or metric value
+- **Global search**: filters developer-period rows and derived developer views by developer email, date, or metric value; delivery views remain team-level for the selected date range and granularity
 - **Export**: CSV, JSON, Excel, 주간 리포트 (Markdown)
 - **Configurable thresholds**: environment variables to tune alert and health indicator sensitivity
 - **Dark mode**: automatic via `prefers-color-scheme`
@@ -135,7 +136,7 @@ PYTHONPATH=src .venv/bin/streamlit run src/workload_analytics/dashboard/app.py -
 Re-fetch Jira data and re-aggregate without touching GitHub data. Useful when Jira issues update more frequently than code activity:
 
 ```bash
-source .env && PYTHONPATH=src python3 scripts/sync_jira_only.py
+source .env && PYTHONPATH=src .venv/bin/python scripts/sync_jira_only.py
 ```
 
 The script reads the existing sync date range from the database, fetches fresh Jira issues, and re-aggregates all developer-period metrics.
@@ -143,8 +144,8 @@ The script reads the existing sync date range from the database, fetches fresh J
 ## Local Test Commands
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
-python3 -m compileall src tests
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+.venv/bin/python -m compileall src tests
 ```
 
 ## Project Structure
@@ -159,7 +160,7 @@ src/workload_analytics/
   pipelines/                        -> Fetch, normalize, aggregate logic
   storage/                          -> SQLite access, schema, helpers
   dashboard/                        -> Streamlit pages, filters, charts, styles, export, guides
-  jobs/                             -> CLI entrypoints for sync or backfill
+  jobs/                             -> CLI entrypoints for full sync
 tests/
   unit/                             -> Pure logic and transform tests
   integration/                      -> API client, storage, and sync flow tests
@@ -181,7 +182,7 @@ The local database stores:
 - `team_period_delivery_metrics`
 - `sync_runs`
 
-Dashboard views read from `developer_period_metrics`, `team_period_delivery_metrics`, and `sync_runs`, not re-aggregate raw payloads on every page load. In organization mode, `sync_runs` also captures discovered and excluded repository counts for the latest sync scope summary.
+Dashboard views read from `developer_period_metrics`, `team_period_delivery_metrics`, and `sync_runs`, not re-aggregate raw payloads on every page load. In organization mode, `sync_runs` also captures discovered and excluded repository counts for the latest sync scope summary. GitHub deployment fetches are bounded by a 7-day created-at lookback before the requested delivery window to avoid status lookups across a repository's full deployment history.
 
 ## Interpreting the Charts
 

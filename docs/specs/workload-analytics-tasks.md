@@ -38,7 +38,7 @@
   - Acceptance: Raw GitHub PR and commit payloads are transformed into normalized rows with repository, author email, merged or landed timestamps, and line counts.
   - Acceptance: Merge commits, vendored paths, generated files, and lockfiles are excluded by default.
   - Verify: `python3 -m unittest tests.unit.test_github_normalization`
-  - Files: `src/workload_analytics/pipelines/github_normalize.py`, `tests/unit/test_github_normalization.py`, `tests/fixtures/github/`
+  - Files: `src/workload_analytics/pipelines/github_normalize.py`, `tests/unit/test_github_normalization.py`
 
 ## Phase 3: Jira Ingestion
 
@@ -52,7 +52,7 @@
   - Acceptance: Jira issue payloads are normalized into rows keyed by assignee email and update timestamp.
   - Acceptance: Missing assignee or email cases are preserved as auditable dropped or unmatched records.
   - Verify: `python3 -m unittest tests.unit.test_jira_normalization`
-  - Files: `src/workload_analytics/pipelines/jira_normalize.py`, `tests/unit/test_jira_normalization.py`, `tests/fixtures/jira/`
+  - Files: `src/workload_analytics/pipelines/jira_normalize.py`, `tests/unit/test_jira_normalization.py`
 
 ## Checkpoint: Source Ingestion
 - [x] GitHub and Jira ingestion tests pass.
@@ -83,7 +83,7 @@
 - [x] Task: Build dashboard filters and summary panels
   - Acceptance: The dashboard can select date range, granularity, and developer while staying within one configured team.
   - Acceptance: Summary panels show sync scope and top-level metric totals for the current filter state.
-  - Verify: Manual check by running `PYTHONPATH=src streamlit run src/workload_analytics/dashboard/app.py`
+  - Verify: Manual check by running `PYTHONPATH=src .venv/bin/streamlit run src/workload_analytics/dashboard/app.py`
   - Files: `src/workload_analytics/dashboard/app.py`, `src/workload_analytics/dashboard/filters.py`, `src/workload_analytics/dashboard/summary.py`
 
 - [x] Task: Build trend and comparison visualizations
@@ -128,7 +128,8 @@
 - [x] Task: Add DORA-lite delivery metrics from GitHub deployments
   - Acceptance: GitHub deployments are fetched, normalized, and stored in `raw_github_deployments`, `normalized_github_deployments`, and `team_period_delivery_metrics`.
   - Acceptance: Successful/failed deployment counts and deployment lead time are computed per period.
-  - Verify: `python3 -m unittest tests.integration.test_sync_pipeline`
+  - Acceptance: Deployment status lookup is bounded by scanning deployments created up to 7 days before the selected delivery window, then filtering by latest deployment status time.
+  - Verify: `python3 -m unittest tests.integration.test_github_client tests.integration.test_sync_pipeline`
   - Files: `src/workload_analytics/clients/github_client.py`, `src/workload_analytics/pipelines/github_normalize.py`, `src/workload_analytics/storage/schema.py`
 
 - [x] Task: Add Jira WIP status buckets
@@ -139,7 +140,7 @@
 
 - [x] Task: Build PR flow, delivery, review efficiency, workload balance, and Jira throughput charts
   - Acceptance: Dashboard renders PR flow, DORA-lite delivery, per-developer review efficiency, workload balance, and Jira throughput charts.
-  - Verify: Manual check with `PYTHONPATH=src streamlit run src/workload_analytics/dashboard/app.py`
+  - Verify: Manual check with `PYTHONPATH=src .venv/bin/streamlit run src/workload_analytics/dashboard/app.py`
   - Files: `src/workload_analytics/dashboard/charts.py`, `src/workload_analytics/dashboard/queries.py`
 
 ## Checkpoint: Productivity Insights
@@ -161,15 +162,15 @@
 
 - [x] Task: Build health indicators
   - Acceptance: Health section shows 5 indicators (업무 분배도, 리뷰 흐름, WIP 추세, 배포 안정성, 처리 흐름) with good/caution/warning/no_data status.
-  - Acceptance: Thresholds are configurable via WORKLOAD_THRESHOLD_* environment variables.
-  - Verify: `python3 -m unittest tests.unit.test_health_indicators`
-  - Files: `src/workload_analytics/dashboard/health.py`, `src/workload_analytics/config/settings.py`
+  - Acceptance: Thresholds are configurable via `WORKLOAD_REVIEW_WAIT_CAUTION_HOURS`, `WORKLOAD_REVIEW_WAIT_WARNING_HOURS`, `WORKLOAD_CV_GOOD`, `WORKLOAD_CV_CAUTION`, `WORKLOAD_WIP_TREND_CAUTION_RATE`, `WORKLOAD_DEPLOYMENT_SUCCESS_GOOD`, and `WORKLOAD_DEPLOYMENT_SUCCESS_CAUTION`.
+  - Verify: `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+  - Files: `src/workload_analytics/dashboard/health.py`, `src/workload_analytics/config/settings.py`, `tests/unit/test_settings.py`
 
 - [x] Task: Build operational alerts
   - Acceptance: Alerts section detects WIP 편중, 리뷰 병목, Stale PR 누적, 대형 PR 비율, 비활성 개발자, 리뷰 대기 이상치.
-  - Acceptance: Alert thresholds are configurable via environment variables.
-  - Verify: `python3 -m unittest tests.unit.test_alerts`
-  - Files: `src/workload_analytics/dashboard/alerts.py`
+  - Acceptance: Alert thresholds are configurable via `WORKLOAD_REVIEW_WAIT_HOURS`, `WORKLOAD_STALE_PR_COUNT`, `WORKLOAD_LARGE_PR_LINES`, `WORKLOAD_LARGE_PR_RATIO`, and `WORKLOAD_WIP_CONCENTRATION_FACTOR`.
+  - Verify: `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+  - Files: `src/workload_analytics/dashboard/alerts.py`, `src/workload_analytics/config/settings.py`, `tests/unit/test_settings.py`
 
 - [x] Task: Build commit heatmap and developer focus charts
   - Acceptance: Commit heatmap shows day-of-week by hour distribution in KST timezone.
@@ -178,7 +179,7 @@
   - Files: `src/workload_analytics/dashboard/charts.py`, `src/workload_analytics/dashboard/queries.py`
 
 - [x] Task: Add global search and multi-format export
-  - Acceptance: Global search filters the entire dashboard by developer email, date, or metric value.
+  - Acceptance: Global search filters developer-period metric rows and derived developer views by developer email, date, or metric value while delivery remains team-level for the selected date range and granularity.
   - Acceptance: Export supports CSV, JSON, Excel, and 주간 리포트 (Markdown) formats.
   - Verify: Manual check on the dashboard.
   - Files: `src/workload_analytics/dashboard/app.py`, `src/workload_analytics/dashboard/queries.py`, `src/workload_analytics/dashboard/export.py`, `src/workload_analytics/dashboard/report.py`

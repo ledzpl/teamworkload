@@ -30,15 +30,15 @@ This is a workload visibility tool, not a performance ranking tool. The UI must 
 - SQLite via `sqlite3` for local raw snapshots, normalized events, and aggregated tables
 - Plotly for charts
 - unittest for tests
-- ruff for linting
-- mypy for type checking
+- `compileall` for syntax verification
+- No dedicated ruff or mypy configuration is currently checked in
 
 ## Commands
 - Setup venv: `python3 -m venv .venv`
-- Run dashboard: `PYTHONPATH=src streamlit run src/workload_analytics/dashboard/app.py`
-- Sync data once: `PYTHONPATH=src python3 -m workload_analytics.jobs.sync_metrics --start-date 2026-01-01 --end-date 2026-03-31 --granularity week`
-- Run tests: `python3 -m unittest discover -s tests -p 'test_*.py'`
-- Run syntax check: `python3 -m compileall src tests`
+- Run dashboard: `PYTHONPATH=src .venv/bin/streamlit run src/workload_analytics/dashboard/app.py`
+- Sync data once: `PYTHONPATH=src .venv/bin/python -m workload_analytics.jobs.sync_metrics --start-date 2026-01-01 --end-date 2026-03-31 --granularity week`
+- Run tests: `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+- Run syntax check: `.venv/bin/python -m compileall src tests`
 
 ## Project Structure
 ```text
@@ -51,7 +51,7 @@ src/workload_analytics/models/      -> Typed metric models and schemas
 src/workload_analytics/pipelines/   -> Fetch, normalize, aggregate logic
 src/workload_analytics/storage/     -> SQLite access, schema, helpers
 src/workload_analytics/dashboard/   -> Streamlit pages, filters, charts, styles, export, guides
-src/workload_analytics/jobs/        -> CLI entrypoints for sync or backfill
+src/workload_analytics/jobs/        -> CLI entrypoints for full sync
 tests/conftest.py                   -> Shared test configuration
 tests/unit/                         -> Pure logic and transform tests
 tests/integration/                  -> API client, storage, and sync flow tests
@@ -65,7 +65,7 @@ from dataclasses import dataclass
 from datetime import date
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class DeveloperPeriodMetrics:
     granularity: Granularity
     developer_email: str
@@ -75,20 +75,20 @@ class DeveloperPeriodMetrics:
     github_commits_landed: int
     github_lines_added: int
     github_lines_deleted: int
-    github_pr_cycle_time_hours: float
-    github_prs_with_cycle_time: int
-    github_pr_review_wait_hours: float
-    github_prs_with_review_wait: int
-    github_prs_stale: int
-    github_prs_small: int
-    github_prs_medium: int
-    github_prs_large: int
     jira_issues_assigned: int
-    jira_todo_issues: int
-    jira_in_progress_issues: int
-    jira_review_issues: int
-    jira_done_issues: int
-    jira_other_issues: int
+    github_pr_cycle_time_hours: float = 0.0
+    github_prs_with_cycle_time: int = 0
+    github_pr_review_wait_hours: float = 0.0
+    github_prs_with_review_wait: int = 0
+    github_prs_stale: int = 0
+    github_prs_small: int = 0
+    github_prs_medium: int = 0
+    github_prs_large: int = 0
+    jira_todo_issues: int = 0
+    jira_in_progress_issues: int = 0
+    jira_review_issues: int = 0
+    jira_done_issues: int = 0
+    jira_other_issues: int = 0
 ```
 
 Conventions:
@@ -103,20 +103,20 @@ Conventions:
 ## Testing Strategy
 - Framework: unittest
 - Unit tests:
-  - GitHub metric calculation from commit and merged PR payload fixtures
-  - Jira assigned-issue calculation from assignee and update-window fixtures
+  - GitHub metric calculation from commit and merged PR mocked payloads
+  - Jira assigned-issue calculation from assignee and update-window mocked payloads
   - Period bucketing for day, week, and month aggregation
   - Identity mapping logic between GitHub users and Jira assignees by email
 - Integration tests:
   - GitHub client pagination and date filtering with mocked HTTP responses
   - Jira client assigned-issue parsing with mocked HTTP responses
   - SQLite writes and reloads for raw, normalized, and aggregated tables
-  - End-to-end sync flow using fixture payloads into dashboard-ready tables
+  - End-to-end sync flow using fake clients, mocked payloads, and temporary SQLite databases into dashboard-ready tables
 - Coverage target:
   - 85%+ on `pipelines/`, `clients/`, and `storage/`
 - Manual verification:
   - Dashboard can filter by date range, developer, and granularity
-  - Chart values match fixture-driven expected totals
+  - Chart values match expected totals from controlled test payloads
   - CSV export matches the visible filtered dataset
 
 ## Boundaries
@@ -129,6 +129,7 @@ Conventions:
   - Keep the first release scoped to one configured team
   - Support multiple GitHub repositories and Jira projects inside that team configuration
   - Support one GitHub organization discovery mode that excludes archived and fork repositories by default
+  - Bound GitHub deployment status lookup by scanning deployments created up to 7 days before the selected delivery window
 - Ask first:
   - Adding a shared database or cloud deployment target
   - Changing the default metric definition for "code implementation amount"
@@ -172,9 +173,9 @@ Conventions:
 - The dashboard shows summary cards with period-over-period delta badges for Active Developers, GitHub Signals, PR Flow, Jira WIP, Delivery, and Sync Scope.
 - The dashboard shows health indicators for 업무 분배도, 리뷰 흐름, WIP 추세, 배포 안정성, 처리 흐름 with good/caution/warning/no_data status.
 - The dashboard shows operational alerts for WIP 편중, 리뷰 병목, Stale PR 누적, 대형 PR 비율, 비활성 개발자, 리뷰 대기 이상치.
-- Global search filters the entire dashboard by developer email, date, or metric value.
+- Global search filters developer-period metric rows and derived developer views by developer email, date, or metric value; team delivery views remain date/granularity scoped.
 - Export supports CSV, JSON, Excel, and 주간 리포트 (Markdown) formats.
-- Alert and health indicator thresholds are configurable via `WORKLOAD_THRESHOLD_*` environment variables with sensible defaults.
+- Alert and health indicator thresholds are configurable via specific `WORKLOAD_*` environment variables with sensible defaults: review wait, stale PR count, large PR size/ratio, WIP concentration, workload CV, WIP trend, and deployment success-rate thresholds.
 - The dashboard supports dark mode automatically via `prefers-color-scheme`.
 - Cached queries for a 12-month window and a team of up to 30 developers render the main charts in under 3 seconds on a typical laptop.
 - The system can backfill at least 12 months of data without manual data editing.
@@ -188,6 +189,7 @@ Conventions:
 - One team scope can include multiple GitHub repositories and multiple Jira projects.
 - GitHub v1 also supports one organization-wide discovery mode, filtered back down to `WORKLOAD_TEAM_MEMBERS`.
 - The first release is local execution only.
+- GitHub deployment status lookup is bounded by a 7-day created-at lookback before the requested delivery window, then filtered by latest deployment status time.
 
 ## Open Questions
 - None at the current product scope.

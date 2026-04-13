@@ -6,8 +6,9 @@
 3. DORA-lite delivery metrics use GitHub deployments as the deployment source for this iteration.
 4. A successful deployment is the latest deployment status with state `success`; failed deployments use latest status `failure` or `error`.
 5. Deployment lead time is measured from the deployed commit timestamp to the successful deployment status timestamp when both are available.
-6. Workload balance uses Jira issue status names from the assigned-issue sync and maps them into coarse WIP buckets.
-7. No new external services or dependencies are added.
+6. Because the GitHub deployments endpoint has no created-at range filter, the implementation bounds status lookup by scanning deployments created up to 7 days before the selected delivery window, then filters by latest deployment status time.
+7. Workload balance uses Jira issue status names from the assigned-issue sync and maps them into coarse WIP buckets.
+8. No new external services or dependencies are added.
 
 ## Objective
 Add three production-oriented views on top of the existing commit, PR, and Jira assigned-issue counts:
@@ -33,7 +34,7 @@ Add three production-oriented views on top of the existing commit, PR, and Jira 
 - `src/workload_analytics/models/` -> Added flow, delivery, and WIP fields
 - `src/workload_analytics/pipelines/` -> Normalization and aggregation rules
 - `src/workload_analytics/storage/` -> SQLite schema migrations and persistence
-- `src/workload_analytics/dashboard/` -> Queries, summary cards, charts, CSV rows
+- `src/workload_analytics/dashboard/` -> Queries, summary cards, charts, CSV/JSON/Excel exports, and Markdown report generation
 - `tests/unit/` -> Pure aggregation and dashboard query tests
 - `tests/integration/` -> API client, storage, and sync pipeline coverage
 
@@ -68,6 +69,7 @@ class TeamPeriodDeliveryMetrics:
   - Treat GitHub/Jira payloads as untrusted and validate expected field shapes.
   - Keep deployment metrics team-scoped rather than assigning deployments to individual developers.
   - Keep missing deployment lead-time inputs visible by counting deployments with lead time separately.
+  - Keep GitHub deployment status lookup bounded so old deployments do not trigger full-history status fetches on every sync.
 - Ask first:
   - Switching deployment source from GitHub deployments to releases, tags, or Actions.
   - Introducing incident management data for full DORA MTTR/change failure rate.
@@ -88,6 +90,7 @@ class TeamPeriodDeliveryMetrics:
   - successful deployment count
   - failed deployment count
   - average deployment lead time when commit timestamp is available
+- GitHub deployment candidate scanning is bounded by a 7-day created-at lookback before the selected delivery window.
 - Jira assigned issues are grouped into WIP status buckets:
   - todo
   - in progress

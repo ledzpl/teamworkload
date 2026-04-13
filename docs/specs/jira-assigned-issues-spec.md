@@ -1,6 +1,6 @@
 # Spec: Jira Assigned Issue Metric
 
-## Assumptions I'm Making
+## Assumptions
 1. The requested change only affects the Jira-side metric. GitHub pull request and commit metrics stay unchanged.
 2. The dashboard must keep supporting the existing date window and day/week/month aggregations.
 3. "Assigned issues" means issues whose current Jira assignee is a synced team member, not issues that merely passed through an assignee in the past.
@@ -22,8 +22,8 @@ Replace the Jira workload signal from completed issue throughput to assigned iss
 - Streamlit dashboard UI
 
 ## Commands
-- Test: `python3 -m unittest discover -s tests -p 'test_*.py'`
-- Compile: `python3 -m compileall src tests`
+- Test: `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+- Compile: `.venv/bin/python -m compileall src tests`
 - Sync: `PYTHONPATH=src .venv/bin/python -m workload_analytics.jobs.sync_metrics --start-date 2026-04-01 --end-date 2026-04-30 --granularity week`
 - Dashboard: `PYTHONPATH=src .venv/bin/streamlit run src/workload_analytics/dashboard/app.py`
 
@@ -64,8 +64,8 @@ Conventions:
   - Sync pipeline persists raw Jira payloads, normalized Jira events, and aggregated metrics using assigned semantics.
   - Storage schema tests cover any renamed tables or columns.
 - Verification:
-  - Run `python3 -m unittest discover -s tests -p 'test_*.py'`
-  - Run `python3 -m compileall src tests`
+  - Run `.venv/bin/python -m unittest discover -s tests -p 'test_*.py'`
+  - Run `.venv/bin/python -m compileall src tests`
 
 ## Boundaries
 - Always:

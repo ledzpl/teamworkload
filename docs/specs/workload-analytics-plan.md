@@ -14,6 +14,7 @@ The plan optimizes for correctness of metric definitions first, then repeatable 
   - PR cycle time, first-review wait, stale PR count, PR size buckets
 - Expose Jira activity as assigned issue count with WIP status buckets (todo, in progress, review, done, other).
 - Expose team-level delivery metrics from GitHub deployments: success/failure counts and deployment lead time (DORA-lite).
+- Bound GitHub deployment status lookup by scanning deployments created up to 7 days before the selected delivery window, then filtering by latest deployment status time.
 - Layer health indicators and operational alerts on top of raw metrics with configurable thresholds.
 - Limit v1 to one configured team scope so configuration and validation stay tractable.
 - Allow that team scope to include multiple GitHub repositories and multiple Jira projects.
@@ -144,7 +145,7 @@ dashboard filters / summary / health / alerts / charts / export
 | Jira issue updates can reflect non-workflow edits as well as assignment activity | Medium | Keep the metric definition explicit in UI/docs and test query + aggregation semantics against fixtures |
 | Multiple repositories, organization discovery, and Jira projects increase config and fetch complexity | Medium | Treat team scope as explicit config and add per-source sync summaries |
 | SQLite is less flexible for ad hoc analytics than DuckDB | Medium | Precompute developer-period aggregates and index the dashboard lookup paths |
-| API rate limits or long backfills slow sync | Medium | Use incremental sync windows, local caching, and bounded pagination |
+| API rate limits or long backfills slow sync | Medium | Use incremental sync windows, local caching, bounded pagination, and bounded GitHub deployment status scans |
 | Team scope grows before v1 stabilizes | Medium | Keep config model extensible but enforce one-team validation in v1 |
 
 ## Parallelization Opportunities
