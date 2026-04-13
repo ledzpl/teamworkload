@@ -747,6 +747,101 @@ class GithubClientIntegrationTest(unittest.TestCase):
             datetime(2026, 4, 1, 0, 15, tzinfo=UTC),
         )
 
+    def test_fetch_deployments_stops_after_created_at_scan_window(self) -> None:
+        deployed_from = datetime(2026, 4, 1, tzinfo=UTC)
+        deployed_to = datetime(2026, 4, 30, 23, 59, tzinfo=UTC)
+        transport = FakeGithubTransport(
+            {
+                (
+                    "/repos/org/api/deployments",
+                    (("page", "1"), ("per_page", "1")),
+                ): GithubTransportResponse(
+                    status_code=200,
+                    payload=[
+                        {
+                            "id": 9200,
+                            "sha": "abc123",
+                            "environment": "production",
+                            "created_at": "2026-04-12T08:00:00Z",
+                        },
+                    ],
+                    headers={},
+                ),
+                (
+                    "/repos/org/api/deployments",
+                    (("page", "2"), ("per_page", "1")),
+                ): GithubTransportResponse(
+                    status_code=200,
+                    payload=[
+                        {
+                            "id": 9100,
+                            "sha": "ancient",
+                            "environment": "production",
+                            "created_at": "2026-03-20T08:00:00Z",
+                        },
+                    ],
+                    headers={},
+                ),
+                (
+                    "/repos/org/api/deployments/9200/statuses",
+                    (("page", "1"), ("per_page", "1")),
+                ): GithubTransportResponse(
+                    status_code=200,
+                    payload=[
+                        {
+                            "state": "success",
+                            "created_at": "2026-04-12T08:30:00Z",
+                        }
+                    ],
+                    headers={},
+                ),
+                (
+                    "/repos/org/api/deployments/9200/statuses",
+                    (("page", "2"), ("per_page", "1")),
+                ): GithubTransportResponse(
+                    status_code=200,
+                    payload=[],
+                    headers={},
+                ),
+                (
+                    "/repos/org/api/commits/abc123",
+                    (),
+                ): GithubTransportResponse(
+                    status_code=200,
+                    payload={
+                        "commit": {"author": {"date": "2026-04-12T06:00:00Z"}},
+                        "parents": [{"sha": "parent1"}],
+                        "files": [],
+                    },
+                    headers={},
+                ),
+            }
+        )
+        client = GithubClient(token="token", transport=transport, page_size=1)
+
+        deployments = client.fetch_deployments(
+            repositories=("org/api",),
+            deployed_from=deployed_from,
+            deployed_to=deployed_to,
+        )
+
+        self.assertEqual(len(deployments), 1)
+        self.assertEqual(deployments[0].deployment_id, 9200)
+        self.assertNotIn(
+            (
+                "/repos/org/api/deployments",
+                (("page", "3"), ("per_page", "1")),
+            ),
+            transport.calls,
+        )
+        self.assertNotIn(
+            (
+                "/repos/org/api/deployments/9100/statuses",
+                (("page", "1"), ("per_page", "1")),
+            ),
+            transport.calls,
+        )
+
     def test_rate_limit_response_raises_specialized_error(self) -> None:
         transport = FakeGithubTransport(
             {

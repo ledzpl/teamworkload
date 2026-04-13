@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
 from .http_json import fetch_json_response
@@ -121,6 +121,9 @@ class UrlLibGithubTransport:
 
 class GithubClient:
     MAX_PAGES = 500
+    # The GitHub deployments endpoint has no created_at range filter; bound the
+    # status scan so high-churn repositories do not require full-history calls.
+    DEPLOYMENT_STATUS_LOOKBACK_DAYS = 7
 
     def __init__(
         self,
@@ -299,16 +302,27 @@ class GithubClient:
         deployed_to: datetime,
     ) -> tuple[GithubDeploymentPayload, ...]:
         candidate_summaries: list[dict[str, Any]] = []
+        deployment_scan_from = deployed_from - timedelta(
+            days=self.DEPLOYMENT_STATUS_LOOKBACK_DAYS
+        )
 
         for page_items in self._iterate_pages(
             path=f"/repos/{repository}/deployments",
             params={},
         ):
+            should_stop_pagination = False
             for summary in page_items:
-                created_at = _parse_datetime(_optional_string(summary.get("created_at")))
+                created_at = _parse_datetime(
+                    _optional_string(summary.get("created_at"))
+                )
                 if created_at is None or created_at > deployed_to:
                     continue
+                if created_at < deployment_scan_from:
+                    should_stop_pagination = True
+                    continue
                 candidate_summaries.append(summary)
+            if should_stop_pagination:
+                break
 
         deployments = self._map_items(
             tuple(candidate_summaries),
