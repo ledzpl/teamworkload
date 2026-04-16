@@ -49,9 +49,20 @@ class SyncContext:
     granularity: Granularity
 
 
-def _load_normalized_prs(conn: sqlite3.Connection) -> tuple[GithubPullRequestEvent, ...]:
+def _load_normalized_prs(
+    conn: sqlite3.Connection,
+    *,
+    sync_start: datetime,
+    sync_end: datetime,
+) -> tuple[GithubPullRequestEvent, ...]:
     rows = conn.execute(
-        "SELECT * FROM normalized_github_pull_requests ORDER BY merged_at"
+        """
+        SELECT *
+        FROM normalized_github_pull_requests
+        WHERE merged_at BETWEEN ? AND ?
+        ORDER BY merged_at
+        """,
+        (sync_start.isoformat(), sync_end.isoformat()),
     ).fetchall()
     return tuple(
         GithubPullRequestEvent(
@@ -71,9 +82,20 @@ def _load_normalized_prs(conn: sqlite3.Connection) -> tuple[GithubPullRequestEve
     )
 
 
-def _load_normalized_commits(conn: sqlite3.Connection) -> tuple[GithubCommitEvent, ...]:
+def _load_normalized_commits(
+    conn: sqlite3.Connection,
+    *,
+    sync_start: datetime,
+    sync_end: datetime,
+) -> tuple[GithubCommitEvent, ...]:
     rows = conn.execute(
-        "SELECT * FROM normalized_github_commits ORDER BY committed_at"
+        """
+        SELECT *
+        FROM normalized_github_commits
+        WHERE committed_at BETWEEN ? AND ?
+        ORDER BY committed_at
+        """,
+        (sync_start.isoformat(), sync_end.isoformat()),
     ).fetchall()
     return tuple(
         GithubCommitEvent(
@@ -88,9 +110,20 @@ def _load_normalized_commits(conn: sqlite3.Connection) -> tuple[GithubCommitEven
     )
 
 
-def _load_normalized_deployments(conn: sqlite3.Connection) -> tuple[GithubDeploymentEvent, ...]:
+def _load_normalized_deployments(
+    conn: sqlite3.Connection,
+    *,
+    sync_start: datetime,
+    sync_end: datetime,
+) -> tuple[GithubDeploymentEvent, ...]:
     rows = conn.execute(
-        "SELECT * FROM normalized_github_deployments ORDER BY deployed_at"
+        """
+        SELECT *
+        FROM normalized_github_deployments
+        WHERE deployed_at BETWEEN ? AND ?
+        ORDER BY deployed_at
+        """,
+        (sync_start.isoformat(), sync_end.isoformat()),
     ).fetchall()
     return tuple(
         GithubDeploymentEvent(
@@ -165,9 +198,21 @@ def main() -> int:
 
         # Load existing GitHub normalized data from DB
         print("[jira-sync] Loading existing GitHub data from DB...")
-        existing_prs = _load_normalized_prs(conn)
-        existing_commits = _load_normalized_commits(conn)
-        existing_deployments = _load_normalized_deployments(conn)
+        existing_prs = _load_normalized_prs(
+            conn,
+            sync_start=sync_start,
+            sync_end=sync_end,
+        )
+        existing_commits = _load_normalized_commits(
+            conn,
+            sync_start=sync_start,
+            sync_end=sync_end,
+        )
+        existing_deployments = _load_normalized_deployments(
+            conn,
+            sync_start=sync_start,
+            sync_end=sync_end,
+        )
         print(
             f"[jira-sync] Loaded {len(existing_prs)} PRs, "
             f"{len(existing_commits)} commits, "

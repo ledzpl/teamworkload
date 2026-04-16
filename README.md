@@ -144,8 +144,8 @@ The script reads the existing sync date range from the database, fetches fresh J
 ## Local Test Commands
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -p 'test_*.py'
-.venv/bin/python -m compileall src tests
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -p 'test_*.py'
+PYTHONPATH=src .venv/bin/python -m compileall src tests scripts
 ```
 
 ## Project Structure
